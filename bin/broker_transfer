@@ -1,0 +1,506 @@
+#!/usr/bin/perl
+
+use strict;
+use warnings;
+use English qw( -no_match_vars );
+
+=pod
+
+=for Pod2Wiki
+
+=head1 NAME
+
+B<broker_transfer> - Transfers items from the broker to target repositories.
+
+=head1 SYNOPSIS
+
+B<broker_transfer> [B<options>] [ I<repository_id> [I<eprintid>] ]
+
+=head1 DESCRIPTION
+
+This script searches all items in the repository, finds those items that can be transferred (but has not yet been sent), and sends them to whichever repositories they should be sent to.
+
+The details of where & how the transfer is to be made is taken from an ini file.
+
+=head1 ARGUMENTS
+
+=over 8
+
+=item B<repository_id> 
+
+The ID of the eprint repository to use.
+
+=item B<eprintid> 
+
+An optional integer indicating that only the record I<eprintid> should be used. Handy for testing new configurations.
+
+
+=back
+
+=head1 OPTIONS
+
+=over 8
+
+=item B<--help>
+
+Print a brief help message and exit.
+
+=item B<--man>
+
+Print the full manual page and then exit.
+
+=item B<--quiet>
+
+Be vewwy vewwy quiet. This option will supress all output unless an error occurs.
+
+=item B<--verbose>
+
+Explain in detail what is going on.
+May be repeated for greater effect.
+
+=item B<--version>
+
+Output version information and exit.
+
+=back   
+
+=head2 ini file configuration
+
+A sample entry in the .ini file is given below
+
+   # Opendepot.org (devel server)
+   [1269]
+   host = http://devel.edina.ac.uk:1201
+   collection = /sword-app/deposit/archive
+   username = username
+   password = p@sswd_up
+   legalagreement = 1
+   fulltextonly = 1
+   realm = SWORD
+   package = http://opendepot.org/broker/1.0
+   exporter = Broker_Deposit_File
+   mime = application/zip
+   archiver = 1;
+   in_progress = 1;
+
+The entry should always start with a comment, to enable identification of the 
+record.
+
+The section text C<[1269]> is the ORI identification for the repository this
+record refers to.
+
+=over 4
+
+=item host & collection
+
+These define the target server to connect to.
+
+=item username & password
+
+The credentials to log into the repository
+
+=item archiver
+
+A flag which shows that the repository has indicated it will take long-term 
+responsibility for any items it accepts
+
+=item legalagreement
+
+A flag which indicates the repository has agreed to abide by any emabrgo dates
+and therefore is able to receive pre-embargoed files.
+
+=item fulltextonly
+
+A flag which indicates that the repository only wishes records with full text
+files associated with them.
+(this being slightly different to records having associated files, as RJB includes
+the original deposit file with all transfers, therefore there will always be at least
+one file with the metadata!)
+Note that all records from Europe PubMed Central are metadata only.
+
+=item in_progress
+
+This is a SWORD 2.0 flag: if a deposit is C<in_progress> it is placed in the
+users workspace rather that passed on for review/publication
+
+See L<http://swordapp.github.io/SWORDv2-Profile/SWORDProfile.html#continueddeposit>
+
+=item exporter
+
+The EPrint export routine to use to create the object to be transferred (eg C<Broker_Deposit_File>
+
+=item package
+
+The package string to present to a SWORD 1.3 target. 
+Defaults to http://opendepot.org/broker/1.0
+
+=item mime
+
+The mime type to use when presenting a deposit to a SWORD 2 target. 
+Defaults to application/zip
+
+=item realm
+
+The string for the http "realm" attribute in basic authentication
+Rarely needed these days, can be left off most of the time.
+
+=back
+
+=head1 DEPENDENCIES
+
+The script pulls in the location of the EPrints install via the environment
+variable C<EPrints_Home> and the name of the archive via C<EPrints_Repo>
+
+=head1 AUTHOR
+
+This script is specifically for the Open Access Repository Junction. This script was written by Ian Stuart
+
+This is part of this EPrints 3 system.
+
+=head1 VERSION
+
+EPrints Version: eprints-3.2.2 to eprints-3.2.10
+
+=head1 CONTACT
+
+Ian Stuart may be contacted at B<Ian.Stuart@ed.ac.uk>
+
+
+=cut
+
+use LWP::UserAgent;
+use AnyEvent::Strict;
+use MIME::Base64;
+use Sys::Hostname;
+use Getopt::Long;
+use Pod::Usage;
+
+use Data::Dumper;
+
+my $eprints_repo = $ENV{EPrints_Repo};
+
+use lib( "$ENV{EPrints_Home}/perl_lib", );
+
+use EPrints;
+
+my $version = 0;
+my $verbose = 0;
+my $quiet   = 0;
+my $help    = 0;
+my $man     = 0;
+
+Getopt::Long::Configure("permute");
+
+GetOptions(
+  'help|?'   => \$help,
+  'man'      => \$man,
+  'version'  => \$version,
+  'verbose+' => \$verbose,
+  'silent'   => \$quiet,
+  'quiet'    => \$quiet
+) || pod2usage(2);
+EPrints::Utils::cmd_version("broker_transfer") if $version;
+pod2usage(1)                                   if $help;
+pod2usage( -exitstatus => 0, -verbose => 2 ) if $man;
+
+our $noise = 1;
+$noise = 0            if ($quiet);
+$noise = 1 + $verbose if ($verbose);
+
+# Set STDOUT to auto flush (without needing a \n)
+$| = 1;
+
+my $repoid = $eprints_repo;
+
+my $session = new EPrints::Session( 1, $repoid, $noise );
+if ( !defined $session ) {
+  print STDERR "Failed to load repository: $repoid\n";
+  exit 1;
+}
+
+print "Set up searches\n" if ( $noise > 0 );
+
+my $dso = $session->get_repository->get_dataset("archive");
+
+my $searchexp1 = EPrints::Search->new(
+  satisfy_all => 1,
+  session     => $session,
+  dataset     => $dso,
+);    # open archive
+
+# If a specific eprint is specified, set that
+if ( defined $ARGV[1] ) {
+  my $eprint = EPrints::DataObj::EPrint->new( $session, $ARGV[1] );
+  if ( !defined $eprint ) {
+
+    $session->get_repository->log(
+      "EPrint #" . $ARGV[1] . " not found. Can't do a transfer." );
+    $session->terminate();
+    exit;
+  } ## end if ( !defined $eprint )
+  else {
+    print "Restricting to item #$ARGV[1]\n" if ( $noise > 0 );
+    $searchexp1->add_field( $dso->get_field("eprintid"), $ARGV[1] );
+  }
+} ## end if ( defined $ARGV[1] )
+
+# now search for all eprints where we have sword credentials, but no date sent
+$searchexp1->add_field( $dso->get_field("broker_sword"), 'TRUE' );
+$searchexp1->add_field( $dso->get_field("broker_sent"),  '' );
+$searchexp1->render_description->toString;
+print "Creating a list of items to transfer\n" if ( $noise > 0 );
+my $results1 = $searchexp1->perform_search;
+
+my $count = $results1->count;
+print "$count potential records to check\n" if ( $noise > 0 );
+
+my @responses = ();
+
+my $arc_dir = $session->config('archiveroot');
+
+my $ini = Config::IniFiles->new( -file => "$arc_dir/cfg/subscribers.ini" );
+
+foreach my $epid ( sort @{ $results1->ids } ) {
+  my $ep = $dso->dataobj($epid);
+
+  # Work out where to send it to....
+  my @listOfTargets = ();
+  my %targets       = ();
+
+  my $targets   = $ep->value('broker');
+  my $eprint_id = $ep->value('eprintid');
+
+  # This is where we collect the results from our export
+  # We keep the title and the response from the export function
+  my %r = ();
+  $r{'title'} = $ep->value("title");
+  $r{'epid'}  = $eprint_id;
+
+  # Because eprints tackles the issue of syncronising records across
+  # multiple lists simply by having them in the same index in those lists,
+  # we need to do is add a note of the sequence number for each target
+  # in the list (we're about to lose the sequence, see below)
+  for ( my $t = 0; $t < scalar @{$targets}; $t++ ) {
+    $targets->[$t]->{'index'} = $t;
+  }
+
+  if ( scalar @{$targets} == 1 ) {
+    @listOfTargets = ( $targets->[0] );
+  }
+  else {
+
+    # a "uniq" for targets, based on repo ids
+    my @t    = ( $targets->[0] );
+    my $last = $targets->[0];
+    foreach ( sort by_repoid @{$targets} ) {
+      push( @listOfTargets, ( $last = $_ ) ) if ( $_ ne $last );
+    }
+  } ## end else [ if ( scalar @{$targets...})]
+
+  # Now get some details on the targets
+  foreach my $t (@listOfTargets) {
+    next
+        unless uc( $t->{'sword'} ) eq
+          'TRUE';    # we don't want anything without a sword endpint
+    next
+        if ( $t->{'sent'} );    # we don't want anything with a sent-date set
+
+    # Lets just confirm that we have subscriber details for this repo
+    my $sword = 0;
+    $sword = "TRUE" if $ini->val( $t->{repoid}, 'username' );
+
+    next unless $sword;
+
+    $t->{host}       = $ini->val( $t->{repoid}, 'host' );
+    $t->{collection} = $ini->val( $t->{repoid}, 'collection' );
+    $t->{username}   = $ini->val( $t->{repoid}, 'username' );
+    $t->{password}   = $ini->val( $t->{repoid}, 'password' );
+    $t->{file}       = "from_broker.zip";
+    $t->{package}
+        = $ini->val( $t->{repoid}, 'package' )
+        ? $ini->val( $t->{repoid}, 'package' )
+        : 'http://opendepot.org/broker/1.0';
+    $t->{exporter}
+        = $ini->val( $t->{repoid}, 'exporter' )
+        ? $ini->val( $t->{repoid}, 'exporter' )
+        : 'SWORD_Deposit_File';
+    $t->{mime}
+        = $ini->val( $t->{repoid}, 'mime' )
+        ? $ini->val( $t->{repoid}, 'mime' )
+        : 'application/zip';
+    $t->{archiver}
+        = $ini->val( $t->{repoid}, 'archiver' )
+        ? $ini->val( $t->{repoid}, 'archiver' )
+        : 0;
+    $t->{legalagreement}
+        = $ini->val( $t->{repoid}, 'legalagreement' )
+        ? $ini->val( $t->{repoid}, 'legalagreement' )
+        : 0;
+    $t->{fulltextonly}
+        = $ini->val( $t->{repoid}, 'fulltextonly' )
+        ? $ini->val( $t->{repoid}, 'fulltextonly' )
+        : 0;
+    $t->{in_progress}
+        = $ini->val( $t->{repoid}, 'in_progress' )
+        ? $ini->val( $t->{repoid}, 'in_progress' )
+        : 0;
+
+  } ## end foreach my $t (@listOfTargets)
+  $r{targets} = \@listOfTargets;
+
+  push @responses, \%r;
+
+} ## end foreach my $epid ( sort @{ ...})
+
+$results1->dispose;
+
+print Dumper( \@responses ) if ( $noise > 1 );
+
+# having got a list of records to export, lets set up the export.
+# The actual export routine can be defined, which needs to sync with the
+# SWORD 1.3 package type and the SWORD 2 mime-type
+#
+# At this point, we should have enough information to run off deposits
+# but we need to do all this in parallel!
+my $cv = AE::cv;
+$cv->begin;
+foreach my $record (@responses) {
+
+  # $record{title} = scalar;
+  # $record{epid} = scalar;
+  # $record{targets} = ref to list of hash-refs
+
+  my $eprintid = $record->{epid};
+
+  # This is from Tim Brody at Soton.
+  # We clone the list of broker objects, edit
+  # that list, and then save that back to the record.
+  my $ep = $session->eprint($eprintid);
+  my $v  = EPrints::Utils::clone( $ep->value('broker') );
+
+  # Now loop through the targets for this eprint, and update
+  # $v as we get updates
+  my $ua = LWP::UserAgent->new;
+
+  foreach my $t ( @{ $record->{targets} } ) {
+    next
+        unless ( exists $t->{'username'}
+      && exists $t->{'password'}
+      && exists $t->{'host'}
+      && exists $t->{'collection'} );
+
+    my $host        = $t->{'host'};
+    my $collection  = $t->{'collection'};
+    my $username    = $t->{'username'};
+    my $password    = $t->{'password'};
+    my $in_progress = $t->{'in_progress'};
+
+    # Set up the SWORD deposit
+    my $auth = "Basic " . MIME::Base64::encode( "$username:$password", '' );
+
+    my %headers = (
+      'X-Packaging'         => $t->{package},
+      'X-No-Op'             => 'false',
+      'X-Verbose'           => 'true',
+      'Content-Disposition' => "filename=" . $t->{'file'},
+      'Content-Type'        => $t->{mime},
+      'User-Agent'          => 'OA-RJ Broker v0.2',
+      'Authorization'       => $auth,
+    );
+
+    if ($in_progress) {
+      $headers{'in_progress'} = 'true'
+    }
+
+    my $url    = "${host}${collection}";
+    my $buffer = $ep->export(
+      $t->{exporter},
+      ( user_type => 'admin',
+        legal     => $t->{legalagreement},
+        fulltext  => $t->{fulltextonly}
+      )
+    );
+
+    # We need the date for logging, as well as when
+    # the item was sent
+    my @t = localtime;
+    my $date = ( $t[5] + 1900 ) . "-" . ( $t[4] + 1 ) . "-" . $t[3];
+    my $log_string
+        = scalar(CORE::localtime) . "|broker_transfer|$eprintid|$url|$date|";
+
+    if ($buffer) {
+
+      # no longer asyncronous
+      my $r = $ua->post( $url, %headers, Content => $buffer );
+
+      my $content = $r->content;
+
+      if ( $r->is_success ) {
+
+        # Here we look at the response from the exporter, and
+        # set the date to <now> if the export was successfull.
+
+        # we need this "if" to stop $1 retaining a value from
+        # a previous itteration
+        my $return_id;
+        if ( $content =~ m#<atom:id>([^<]+)</atom:id># ) {
+          $return_id = $1 if $1;
+        }
+        elsif ( $content =~ m#<id>([^<]+)</id># ) {
+          $return_id = $1 if $1;
+        }
+
+        if ($return_id) {
+
+          $v->[ $t->{'index'} ]->{'sent'}   = $date;
+          $v->[ $t->{'index'} ]->{'return'} = $return_id;
+          $v->[ $t->{'index'} ]->{'note'}   = '';
+
+          $log_string .= "$return_id";
+
+        } ## end if ($return_id)
+      } ## end if ( $r->is_success )
+      else {
+
+        my $v = EPrints::Utils::clone( $ep->value('broker') );
+        $v->[ $t->{'index'} ]->{'note'} = "Fail [$date]: " . $r->status_line;
+
+        # Keep a track of the logging
+        $log_string .= 'FAIL: ' . $r->status_line;
+
+      } ## end else [ if ( $r->is_success ) ]
+    } ## end if ($buffer)
+    else {
+
+      # Keep a track of the logging
+      $log_string .= "NOT SENT";
+
+    } ## end else [ if ($buffer) ]
+    my $log_location
+        = $session->config('archiveroot') . '/var/' 
+        . hostname
+        . "-transfer_log";
+
+    open( my $LOG, ">>$log_location" )
+        or warn("could not open log file $log_location");
+    print {$LOG} "$log_string\n";
+    close($LOG);
+
+  } ## end foreach my $t ( @{ $record->...})
+  $ep->set_value( 'broker', $v );
+  $ep->commit;
+} ## end foreach my $record (@responses)
+$cv->end;
+$cv->recv;
+
+$session->terminate();
+exit;
+
+sub by_repoid {
+
+  # the two keys are automagically $a & $b
+  return 0 unless ( exists $a->{'repoid'} && exists $b->{'repoid'} );
+  return 1 if ( exists $a->{'repoid'} && not exists $b->{'repoid'} );
+  return -1 if ( not exists $a->{'repoid'} && exists $b->{'repoid'} );
+  return $a->{'repoid'} cmp $b->{'repoid'};
+} ## end sub by_repoid
