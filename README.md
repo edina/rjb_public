@@ -18,7 +18,7 @@ They are dependent on three external services
 
 * Organisation Identification
 
-  The ORI lookup service requires ORI ```org\_ids```, so some mechanism is needed to parse the metadata supplied to identify organisations, and assign ORI ```org\_ids``` to them
+  The ORI lookup service requires ORI `org_ids`, so some mechanism is needed to parse the metadata supplied to identify organisations, and assign ORI `org_ids` to them
 
 ## Additional EPrints fields
 
