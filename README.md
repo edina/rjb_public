@@ -7,6 +7,7 @@ These are the basic importers used by the Jisc Publications Router.
 These plugins are used within an EPrints 3.2 repository.
 
 They are dependent on three external services
+
 * ORI
 
   The [Organisation and Repository Identification (ORI)](http://ori.edina.ac.uk) service provides a lookup from organisation to repositories, and is used to determine the *appropriate* repositories for a given list of organisations
