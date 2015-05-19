@@ -14,9 +14,8 @@ use XML::LibXML;
 
 =head1 NAME
 
-B<EPrints::Plugin::Sword::Import::Broker_Common> - A suite of common methods
-for all SWORD importers in the Broker suite
-
+B<EPrints::Plugin::EdinaImporter> - A suite of common methods
+for importers in the Broker suite
 
 =head1 DESCRIPTION
 
@@ -385,6 +384,7 @@ EPrints (http://epriints.org)
 
 =head1 AUTHOR
 
+Ian Stuart <Ian.Stuart@ed.ac.uk>
 Ray Carrick <Ray.Carrick@ed.ac.uk>
 
 2014-2015

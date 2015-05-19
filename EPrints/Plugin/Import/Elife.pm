@@ -762,6 +762,7 @@ EPrints (http://epriints.org)
 
 =head1 AUTHOR
 
+Ian Stuart <Ian.Stuart@ed.ac.uk>
 Ray Carrick <Ray.Carrick@ed.ac.uk>
 
 2014-2015
