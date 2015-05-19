@@ -24,7 +24,7 @@ They are dependent on three external services
 The *eprint* data-type is extended to capture a quantity of additional data:
 
 * Insert the following to the end of the list for editors, contributors, and creators:
-```perl;
+```
     {
       'sub_name' => 'institution',
       'type' => 'text',
@@ -51,7 +51,7 @@ The *eprint* data-type is extended to capture a quantity of additional data:
 ```
 
 * modify related url as below:
-```php
+```
     {
       'name' => 'related_url',
       'type' => 'compound',
@@ -81,7 +81,7 @@ The *eprint* data-type is extended to capture a quantity of additional data:
 ```
 
 * and add the following to the end of the file
-```ruby
+```
     {
       'name' => 'grants',
       'type' => 'compound',
