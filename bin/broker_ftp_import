@@ -1,0 +1,449 @@
+#!/usr/bin/perl
+
+use strict;
+use warnings;
+use English qw( -no_match_vars );
+
+
+=pod
+
+=for Pod2Wiki
+
+=head1 NAME
+
+B<broker_ftp_import> - Import a file using an import plugin.
+
+=head1 SYNOPSIS
+
+B<broker_ftp_import> I<repository_id> [B<options>] I<dataset>
+
+B<broker_ftp_import> I<repository_id> [B<options>] I<dataset> I<plugin> I<filename> 
+
+=head1 DESCRIPTION
+
+This is a variation of the original EPrints C<import> script, but modified to
+do what we need.
+
+This command imports a set of EPrints from a file into the given dataset.
+
+=head1 ARGUMENTS
+
+=over 8
+
+=item I<repository_id> 
+
+The ID of the EPrint repository to import to.
+
+=item I<dataset>
+
+The name of the dataset to import into, such as "eprint","archive", "subject" or "user".
+
+Please note that for the "subject" dataset, you are probably better off using the import_subjects tool which will empty the dataset before importing.
+
+=item I<plugin>
+
+The id of the input plugin to use. This should not include the leading "Import::". Examples: BibTeX, XML.
+
+If this is ommited or an invalid plugin is requested, then 'import' will list all plugins compatible with the dataset and exit.
+
+=back
+
+=head1 OPTIONS
+
+=over 8
+
+=item B<--user USERID/USERNAME> 
+
+For eprint datasets only. (not user or subject). 
+
+Sets the userid/username of the user in the system who will own the imported records.
+
+Usually required for importing EPrint records. This may not be required if the import format contains the userid value, eg. an import in the EPrints 3 XML format.
+
+If this is an integer then it is assumed to be the userid of the user, otherwise it is assumed to be the username.
+
+You may wish to create one or more "bulk import" users and make imported eprint records belong to them.
+
+=item B<--parse-only>
+
+Don't import, just check the file.
+
+=item B<--migration>
+
+Turn on all the options needed to correctly import an XML data file exported from version 2, using the migration toolkit. This is the same as using --enable-import-ids --enable-import-datestamps --enable-file-imports --force
+
+=item B<--enable-import-ids>
+
+By default import will generate a new eprintid, or userid for each record. This option tells it to use the id spcified in the imported data. This is generally used for importing into a new repository from an old one.
+
+=item B<--enable-import-datestamps>
+
+Normally import will set the datestamp the the time the eprint was imported. This option causes it to take the datestamp from the imported data, if available.
+
+=item B<--enable-file-imports>
+
+Allow the imported data to import files from the local filesystem. This can obviously be seen as a security hole if you don't trust the data you are importing.
+This sets the "enable_file_imports" configuration option for this session only.
+
+=item B<--enable-web-imports>
+
+Allow the imported data to import files from the Web. This can obviously be seen as a security hole if you don't trust the data you are importing.
+This sets the "enable_web_imports" configuration option for this session only.
+
+=item B<--update>
+
+Normally you can not import a new item with the same id as an existing item.
+With this option enabled existing items will be updated with the new item (implies --enable-import-ids).
+
+=item B<--force>
+
+Don't ask any questions, just do it!
+
+=item B<--help>
+
+Print a brief help message and exit.
+
+=item B<--man>
+
+Print the full manual page and then exit.
+
+=item B<--quiet>
+
+Be vewwy vewwy quiet. This option will supress all output unless an error occurs.
+
+=item B<--verbose>
+
+Explain in detail what is going on.
+May be repeated for greater effect.
+
+Shows why a plugin is disabled.
+
+=item B<--version>
+
+Output version information and exit.
+
+=back   
+
+=head1 DEPENDENCIES
+
+This package is used within EPrints.
+
+It is dependent on the ORI service to map ORI org_ids to appropriate
+repositories
+
+=head1 SEE ALSO
+
+EPrints (http://epriints.org)
+
+=head1 AUTHOR
+
+Ian Stuart <Ian.Stuart@ed.ac.uk>
+Ray Carrick <Ray.Carrick@ed.ac.uk>
+
+2014-2015
+
+=head1 LICENSE
+
+EPrints is GNU licensed, so this distributed code is also GNU licensed
+
+=cut
+
+use Getopt::Long;
+use Pod::Usage;
+use Data::Dumper;
+
+if ( !exists $ENV{EPrints_Home} ) {
+  print STDERR
+      "Failed to find the environment variable that defines the EPrints home location.\n";
+  exit 1;
+}
+
+use lib( "$ENV{EPrints_Home}/perl_lib", );
+
+use EPrints;
+
+my $version = 0;
+my $verbose = 0;
+my $quiet = 0;
+my $purge = 1;
+my $help = 0;
+my $man = 0;
+my $force = 0;
+my $single = 0;
+my $scripted = 0;
+my $user = undef;
+my $parse_only = 0;
+my $enable_file_imports = 0;
+my $enable_web_imports = 0;
+my $enable_import_ids = 0;
+my $enable_import_datestamps = 0;
+my $migration = 0;
+my $update = 0;
+
+Getopt::Long::Configure("permute");
+
+GetOptions( 
+	'help|?' => \$help,
+	'man' => \$man,
+	'force' => \$force,
+	'user=s' => \$user,
+	'version' => \$version,
+	'verbose+' => \$verbose,
+	'silent' => \$quiet,
+	'quiet' => \$quiet,
+	'scripted' => \$scripted,
+	'single' => \$single,
+	'parse-only' => \$parse_only,
+	'enable-file-imports' => \$enable_file_imports,
+	'enable-web-imports' => \$enable_web_imports,
+	'enable-import-ids' => \$enable_import_ids,
+	'enable-import-datestamps' => \$enable_import_datestamps,
+	'migration' => \$migration,
+	'update' => \$update,
+) || pod2usage( 2 );
+EPrints::Utils::cmd_version( "export_xml" ) if $version;
+pod2usage( 1 ) if $help;
+pod2usage( -exitstatus => 0, -verbose => 2 ) if $man;
+
+if ( scalar @ARGV != 1 && scalar @ARGV !=3 ) {
+  pod2usage(2);
+};
+
+my $noise = 1;
+$noise = 0 if( $quiet );
+$noise = 1+$verbose if( $verbose );
+
+if( $migration )
+{
+	$force = 1;
+	$enable_file_imports = 1;
+	$enable_web_imports = 1;
+	$enable_import_ids = 1;
+	$enable_import_datestamps = 1;
+}
+if( $update )
+{
+	$enable_import_ids = 1;
+}
+
+if( $scripted ) { $noise = 0; }
+# Set STDOUT to auto flush (without needing a \n)
+$|=1;
+
+my $repoid = $ENV{EPrints_Repo};
+my $datasetid = shift @ARGV;
+my $ipluginid = shift @ARGV;
+my $filename = shift @ARGV;
+
+my $session = new EPrints::Session( 1, $repoid, $noise );
+if( !defined $session )
+{
+	print STDERR "Failed to load repository: $repoid\n";
+	exit 1;
+}
+
+
+if( $enable_file_imports )
+{
+	# doesn't use a setter method!
+	$session->get_repository->{config}->{enable_file_imports} = 1;
+}
+if( $enable_web_imports )
+{
+	# doesn't use a setter method!
+	$session->get_repository->{config}->{enable_web_imports} = 1;
+}
+if( $enable_import_ids ) 
+{ 
+	# doesn't use a setter method!
+	$session->get_repository->{config}->{enable_import_ids} = 1;
+}
+if( $enable_import_datestamps ) 
+{ 
+	# doesn't use a setter method!
+	$session->get_repository->{config}->{enable_import_datestamps} = 1;
+}
+
+
+my $ds = $session->get_repository->get_dataset( $datasetid ) ;
+if( !defined $ds )
+{
+	print STDERR "Unknown Dataset ID: $datasetid\n";
+	$session->terminate;
+	exit 1;
+}
+
+my $userobj;
+if( defined $user )
+{
+	if( $user =~ m/^\d+/ )
+	{
+		$userobj = EPrints::DataObj::User->new( $session, $user );
+	}
+	else
+	{
+		$userobj = EPrints::DataObj::User::user_with_username( $session, $user );
+	}
+	if( !defined $userobj )
+	{
+		print STDERR "Can't find user with userid/username [$user]\n";
+		exit 1;
+	}
+}
+
+if( !defined $ipluginid )
+{
+	my @list_plugins = $session->plugin_list( 
+					type=>"Import",
+					can_produce=>"list/".$ds->confid );
+	my @dataobj_plugins = $session->plugin_list( 
+					type=>"Import",
+					can_produce=>"dataobj/".$ds->confid );
+	my %p = ();
+	my %l = ();
+	my %d = ();
+	foreach( @list_plugins ) { $p{$_} = $_; $l{$_} = 1; }
+	foreach( @dataobj_plugins ) { $p{$_} = 1; $d{$_} = 1; }
+	print "Available input formats:\n";
+	foreach my $a_plugin_id ( sort keys %p ) 
+	{
+		my $a_plugin = $session->plugin( $a_plugin_id );
+		printf( "% 16s", $a_plugin->get_subtype);
+		print ": ".$a_plugin->get_name();
+		if( $l{$a_plugin_id} && !$d{$a_plugin_id} )
+		{
+			print " (List input only)";
+		}
+		if( $d{$a_plugin_id} && !$l{$a_plugin_id} )
+		{
+			print " (Single object input only)";
+		}
+		if( $a_plugin->broken )
+		{
+			print " (DISABLED)";
+			print "\n** Disabled because: ".$a_plugin->error_message if( $noise > 1 );
+		}
+		print "\n";
+	}
+	$session->terminate();
+	exit;
+}
+
+if( !defined $user && $ds->confid eq "eprint" && !$force )
+{
+	print <<END;
+Warning! You haven't specified a user id to own these eprints, 
+That's OK, assuming the input file specifies the userid for each eprint. 
+(you can supress this check with --force).
+END
+	unless( EPrints::Utils::get_input_confirm( "Continue?", 1 ) )
+	{
+		$session->terminate();
+		exit 1;
+	}
+}
+
+my $handler = EPrints::CLIProcessor->new(
+	session => $session,
+	scripted => $scripted,
+);
+
+my $pluginid = "Import::".$ipluginid;
+my $plugin = $session->plugin( $pluginid, parse_only=>$parse_only, update=>$update, Handler=>$handler );
+
+if( !defined $plugin )
+{
+	# This warning is already generated by the plugin
+	# code.
+	#print STDERR "Plugin $pluginid not found.\n";
+	$session->terminate();
+	exit 1;
+}
+	
+my $req_plugin_type = "list/".$ds->confid;
+	
+unless( $plugin->can_produce( $req_plugin_type ) )
+{
+	print STDERR "Plugin $pluginid can't process $req_plugin_type data.\n";
+	$session->terminate();
+	exit 1;
+}
+
+if( $plugin->broken )
+{
+	print STDERR "Plugin $pluginid could not run because:\n";
+	print STDERR $plugin->error_message."\n";
+	$session->terminate();
+	exit 1;
+}
+
+if( $scripted )
+{
+	print "EPRINTS_IMPORT: BEGIN\n";
+}
+
+# improve ordervalues insertion performance
+$session->cache_subjects;
+
+my $return_code = 0;
+
+eval {
+$plugin->input_file(
+		dataset=>$ds,
+		filename=>$filename,
+		user=>$userobj,
+	);
+};
+if( $@ )
+{
+    $return_code = 1;
+	$handler->message( "error", $session->make_text( "Unhandled exception in ".$plugin->{id}.": $@" ) );
+}
+
+my $count = $parse_only ? $handler->{parsed} : $handler->{wrote};
+
+if( $scripted )
+{
+	print "EPRINTS_IMPORT: DONE $count\n";
+}
+
+if( $count > 0 )
+{
+	if( $noise > 0 )
+	{
+		if( $parse_only )
+		{
+			print "Would have imported $count records\n";
+		}
+		else
+		{
+			print "Number of records imported: $count\n";
+			if( $noise > 1 )
+			{
+				print join( ",", @{$handler->{ids}})."\n";
+			}
+		}
+	}
+	if( @{$handler->{ids}} && defined $userobj && $ds->confid eq "eprint" )
+	{
+		my $user_id = $userobj->get_id;
+
+		my $list = EPrints::List->new(
+			session => $session,
+			dataset => $ds,
+			ids => $handler->{ids}
+		);
+
+		$list->map(
+			sub {
+				my( $session, $dataset, $eprint ) = @_;
+				$eprint->set_value( "userid", $user_id );
+				$eprint->commit;
+			} );
+
+		$list->dispose;
+	}
+}
+
+$session->terminate();
+exit($return_code);
