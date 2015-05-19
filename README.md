@@ -22,7 +22,8 @@ They are dependent on three external services
 
 * Organisation Identification
 
-  The ORI lookup service requires ORI `org_ids`, so some mechanism is needed to parse the metadata supplied to identify organisations, and assign ORI `org_ids` to them
+  The ORI lookup service requires ORI `org_ids`, so some mechanism is needed to parse the metadata supplied to identify organisations, and assign ORI `org_ids` to them.
+  EDINA uses an external route made available to the University of Edinburgh to parse and identify organisations.
 
 ## Additional EPrints fields
 
