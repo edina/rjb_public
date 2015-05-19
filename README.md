@@ -9,7 +9,7 @@ These plugins are used within an EPrints 3.2 repository.
 They are dependent on three external services
 * ORI
 
-  The [**O**rganisation and **R**epository **I**dentification](http://ori.edina.ac.uk) service provides a lookup from organisation to repositories, and is used to determine the *appropriate* repositories for a given list of organisations
+  The [Organisation and Repository Identification (ORI)](http://ori.edina.ac.uk) service provides a lookup from organisation to repositories, and is used to determine the *appropriate* repositories for a given list of organisations
 
 * SHERPA RoMEO
 
@@ -17,14 +17,14 @@ They are dependent on three external services
 
 * Organisation Identification
 
-  The ORI lookup service requires ORI org\_ids, so some mechanism is needed to parse the metadata supplied to identify organisations, and assign ORI org\_ids to them
+  The ORI lookup service requires ORI ```org\_ids```, so some mechanism is needed to parse the metadata supplied to identify organisations, and assign ORI ```org\_ids``` to them
 
 ## Additional EPrints fields
 
 The *eprint* data-type is extended to capture a quantity of additional data:
 
 * Insert the following to the end of the list for editors, contributors, and creators:
-```perl
+```
     {
       'sub_name' => 'institution',
       'type' => 'text',
