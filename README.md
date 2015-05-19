@@ -1,6 +1,10 @@
 # Jisc Publicatons Router
 
-These are the basic importers used by the Jisc Publications Router.
+This repository contains the basics for the Router:
+
+* The currently active importers
+* The exporters to create the .zip file that's trasnferred via SWORD
+* The scripts for transfering, and then looking for, records
 
 ## DEPENDENCIES
 
