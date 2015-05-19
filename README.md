@@ -1,8 +1,8 @@
-#Jisc Publicatons Router
+# Jisc Publicatons Router
 
 These are the basic importers used by the Jisc Publications Router.
 
-##DEPENDENCIES
+## DEPENDENCIES
 
 These plugins are used within an EPrints 3.2 repository.
 
@@ -19,12 +19,12 @@ They are dependent on three external services
 
   The ORI lookup service requires ORI org\_ids, so some mechanism is needed to parse the metadata supplied to identify organisations, and assign ORI org\_ids to them
 
-##Additional EPrints fields
+## Additional EPrints fields
 
 The *eprint* data-type is extended to capture a quantity of additional data:
 
 * Insert the following to the end of the list for editors, contributors, and creators:
-
+```perl
     {
       'sub_name' => 'institution',
       'type' => 'text',
@@ -48,9 +48,10 @@ The *eprint* data-type is extended to capture a quantity of additional data:
       'sub_name' => 'orcid',
       'type' => 'text',
     },
+```
 
 * modify related url as below:
-
+```perl
     {
       'name' => 'related_url',
       'type' => 'compound',
@@ -77,9 +78,10 @@ The *eprint* data-type is extended to capture a quantity of additional data:
       'input_boxes' => 1,
       'input_ordered' => 0,
     }
+```
 
 * and add the following to the end of the file
-
+```perl
     {
       'name' => 'grants',
       'type' => 'compound',
@@ -166,4 +168,4 @@ The *eprint* data-type is extended to capture a quantity of additional data:
       'type' => 'url',
       'render_value' => 'EPrints::Extras::render_url_truncate_end',
     },
-
+```
