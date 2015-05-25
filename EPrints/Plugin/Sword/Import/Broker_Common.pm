@@ -404,7 +404,15 @@ sub type_mapping {
 
 =head1 DEPENDENCIES
 
+This package was developed at EDINA (http://edina.ac.uk/) as part of the
+Repository Junction Broker / Publications Router 
+(http://edina.ac.uk/about/contact.html)
+
 This package is used within EPrints.
+
+The Router is dependent on the ORI service to map ORI org_ids to appropriate
+repositories and uses an external lexicography routine made available to the
+University of Edinburgh.
 
 =head1 SEE ALSO
 

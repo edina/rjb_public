@@ -14,22 +14,29 @@ They are dependent on three external services
 
 * ORI
 
-  The [Organisation and Repository Identification (ORI)](http://ori.edina.ac.uk) service provides a lookup from organisation to repositories, and is used to determine the *appropriate* repositories for a given list of organisations
+  The [Organisation and Repository Identification (ORI)](http://ori.edina.ac.uk)
+  service provides a lookup from organisation to repositories, and is used to
+  determine the *appropriate* repositories for a given list of organisations
 
 * SHERPA RoMEO
 
-  The [SHERPA RoMEO](http://www.sherpa.ac.uk/romeo/) service provides a lookup from ISSN to publisher, and is used if an ISSN is provided, but no publisher
+  The [SHERPA RoMEO](http://www.sherpa.ac.uk/romeo/) service provides a lookup
+  from ISSN to publisher, and is used if an ISSN is provided, but no publisher
 
 * Organisation Identification
 
-  The ORI lookup service requires ORI `org_ids`, so some mechanism is needed to parse the metadata supplied to identify organisations, and assign ORI `org_ids` to them.
-  EDINA uses an external lexicography routine made available to the University of Edinburgh to parse and identify organisations.
+  The ORI lookup service requires ORI `org_ids`, so some mechanism is needed
+  to parse the metadata supplied to identify organisations, and assign ORI 
+  `org_ids` to them.
+  EDINA uses an external lexicography routine made available to the 
+  University of Edinburgh to parse and identify organisations.
 
 ## Additional EPrints fields
 
 The *eprint* data-type is extended to capture a quantity of additional data:
 
-* Insert the following to the end of the list for editors, contributors, and creators:
+* Insert the following to the end of the list for editors, contributors, and 
+creators:
 ```
     {
       'sub_name' => 'institution',

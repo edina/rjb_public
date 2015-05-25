@@ -148,6 +148,10 @@ Rarely needed these days, can be left off most of the time.
 
 =head1 DEPENDENCIES
 
+This script was developed at EDINA (http://edina.ac.uk/) as part of the
+Repository Junction Broker / Publications Router 
+(http://edina.ac.uk/about/contact.html)
+
 This package is used within EPrints.
 
 The script pulls in the location of the EPrints install via the environment

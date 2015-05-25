@@ -1254,6 +1254,14 @@ organisation, or thing.
 
 =back
 
+=head1 DEPENDENCIES
+
+This package was developed at EDINA (http://edina.ac.uk/) as part of the
+Repository Junction Broker / Publications Router 
+(http://edina.ac.uk/about/contact.html)
+
+This package is used within EPrints.
+
 =head1 SEE ALSO
 
   Export::METS_Broker

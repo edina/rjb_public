@@ -67,6 +67,10 @@ variable C<EPrints_Home> and the name of the archive via C<EPrints_Repo>
 
 =head1 DEPENDENCIES
 
+This script was developed at EDINA (http://edina.ac.uk/) as part of the
+Repository Junction Broker / Publications Router 
+(http://edina.ac.uk/about/contact.html)
+
 This package is used within EPrints.
 
 It uses C<AnyEvent> do parallel processing, and C<LWP::UserAgent> for http
